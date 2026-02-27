@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>競輪パフォーマンス管理アプリ</title>
+
+<style>
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  margin:0;
+  padding:20px;
+  background:#f4f6fb;
+}
+h1{font-size:22px}
+.card{
+  background:#fff;
+  padding:16px;
+  margin-bottom:16px;
+  border-radius:12px;
+  box-shadow:0 4px 12px rgba(0,0,0,.05);
+}
+label{font-size:14px;color:#666}
+input,select,textarea{
+  width:100%;
+  padding:8px;
+  margin-top:4px;
+  margin-bottom:12px;
+  border-radius:8px;
+  border:1px solid #ccc;
+}
+button{
+  padding:10px 16px;
+  border:none;
+  border-radius:8px;
+  background:#2563eb;
+  color:#fff;
+  cursor:pointer;
+}
+button:hover{opacity:.9}
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+th,td{
+  border-bottom:1px solid #ddd;
+  padding:8px;
+  font-size:13px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>競輪パフォーマンス管理</h1>
+
+<div class="card">
+<label>開催日</label>
+<input type="date" id="date">
+
+<label>レース時間</label>
+<input type="time" id="time">
+
+<label>開催場所</label>
+<input type="text" id="place">
+
+<label>決まり手</label>
+<select id="kimarite">
+<option value="">選択</option>
+<option>先行</option>
+<option>まくり</option>
+<option>さし</option>
+<option>マーク</option>
+</select>
+
+<label>整いスコア（0-16）</label>
+<input type="number" id="score" min="0" max="16">
+
+<label>着順</label>
+<input type="number" id="rank">
+
+<label>次に活かす1点</label>
+<input type="text" id="next">
+
+<label>メモ</label>
+<textarea id="note"></textarea>
+
+<button onclick="saveRace()">保存</button>
+</div>
+
+<div class="card">
+<h2>レース一覧</h2>
+<table>
+<thead>
+<tr>
+<th>日付</th>
+<th>時間</th>
+<th>場所</th>
+<th>決まり手</th>
+<th>整い</th>
+<th>着順</th>
+</tr>
+</thead>
+<tbody id="raceList"></tbody>
+</table>
+</div>
+
+<script>
+const STORAGE_KEY = "keirin_app_v3";
+
+function loadRaces(){
+  return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+}
+
+function saveRace(){
+  const races = loadRaces();
+
+  const race = {
+    date:document.getElementById("date").value,
+    time:document.getElementById("time").value,
+    place:document.getElementById("place").value,
+    kimarite:document.getElementById("kimarite").value,
+    score:document.getElementById("score").value,
+    rank:document.getElementById("rank").value,
+    next:document.getElementById("next").value,
+    note:document.getElementById("note").value,
+  };
+
+  races.push(race);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(races));
+  render();
+  alert("保存しました");
+}
+
+function render(){
+  const races = loadRaces();
+  const tbody = document.getElementById("raceList");
+  tbody.innerHTML = "";
+
+  races.forEach(r=>{
+    tbody.innerHTML += `
+    <tr>
+      <td>${r.date}</td>
+      <td>${r.time}</td>
+      <td>${r.place}</td>
+      <td>${r.kimarite}</td>
+      <td>${r.score}</td>
+      <td>${r.rank}</td>
+    </tr>
+    `;
+  });
+}
+
+render();
+</script>
+
+</body>
+</html>
