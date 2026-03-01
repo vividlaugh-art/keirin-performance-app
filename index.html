@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>競輪 勝ちパターン管理（選手＆コーチ）</title>
+  <style>
+    :root{
+      --bg:#f4f6fb; --card:#fff; --text:#111827; --muted:#6b7280;
+      --line:#e5e7eb; --primary:#2563eb; --danger:#ef4444;
+      --chip:#eef2ff;
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:18px;
+      font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+      background:var(--bg); color:var(--text);
+    }
+    h1{margin:0 0 10px; font-size:20px}
+    h2{margin:0 0 10px; font-size:16px}
+    .row{display:flex; gap:10px; flex-wrap:wrap}
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:14px;
+      box-shadow:0 6px 18px rgba(0,0,0,.05);
+      margin-bottom:12px;
+    }
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      margin-bottom:10px;
+    }
+    .badge{
+      font-size:12px; color:var(--muted);
+      background:var(--chip);
+      padding:6px 10px; border-radius:999px;
+      border:1px solid #dbeafe;
+      white-space:nowrap;
+    }
+    label{font-size:12px; color:var(--muted); display:block; margin-bottom:4px}
+    input,select,textarea{
+      width:100%; padding:10px 10px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#fff;
+      font-size:14px;
+      outline:none;
+    }
+    textarea{min-height:72px; resize:vertical}
+    .grid{
+      display:grid; gap:10px;
+      grid-template-columns:repeat(12,1fr);
+    }
+    .col-12{grid-column:span 12}
+    .col-6{grid-column:span 6}
+    .col-4{grid-column:span 4}
+    .col-3{grid-column:span 3}
+    .col-2{grid-column:span 2}
+    @media (max-width:820px){
+      .col-6,.col-4,.col-3,.col-2{grid-column:span 12}
+      body{padding:12px}
+    }
+    button{
+      border:none; border-radius:12px;
+      padding:10px 12px;
+      font-size:14px; cursor:pointer;
+      background:var(--primary); color:#fff;
+    }
+    button.secondary{
+      background:#1118270d; color:var(--text);
+      border:1px solid var(--line);
+    }
+    button.danger{
+      background:var(--danger);
+    }
+    button:disabled{opacity:.5; cursor:not-allowed}
+    .tabs{
+      display:flex; gap:8px; flex-wrap:wrap;
+      margin:10px 0 0;
+    }
+    .tab{
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--text);
+      font-size:13px;
+      cursor:pointer;
+    }
+    .tab.active{
+      background:var(--primary);
+      border-color:var(--primary);
+      color:#fff;
+    }
+    .hint{font-size:12px; color:var(--muted); margin-top:6px; line-height:1.5}
+    table{width:100%; border-collapse:collapse}
+    th,td{
+      border-bottom:1px solid var(--line);
+      padding:10px 8px;
+      font-size:13px;
+      text-align:left;
+      vertical-align:top;
+    }
+    th{color:var(--muted); font-weight:600}
+    .actions{display:flex; gap:8px; flex-wrap:wrap}
+    .kpi{
+      display:grid; gap:10px;
+      grid-template-columns:repeat(4,1fr);
+    }
+    .kpi .box{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:#fff;
+    }
+    .kpi .num{font-size:22px; font-weight:800; margin-top:6px}
+    @media (max-width:820px){ .kpi{grid-template-columns:repeat(2,1fr)} }
+    .small{font-size:12px; color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    .right{ text-align:right }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div>
+      <h1>競輪 勝ちパターン管理（選手＆コーチ）</h1>
+      <div class="hint">選手は入力 → 週1でCSV送付。コーチはCSV取り込み → 分析。データは端末内保存（自動同期なし）。</div>
+    </div>
+    <div class="badge" id="modeBadge">モード：選手</div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="align-items:center; justify-content:space-between">
+      <div class="tabs">
+        <button class="tab active" data-tab="input">入力</button>
+        <button class="tab" data-tab="list">一覧</button>
+        <button class="tab" data-tab="analysis">分析</button>
+        <button class="tab" data-tab="data">データ</button>
+        <button class="tab" data-tab="settings">設定</button>
+      </div>
+
+      <div class="row" style="align-items:center">
+        <label class="small" style="margin:0">モード</label>
+        <select id="modeSelect" style="width:auto; min-width:140px">
+          <option value="athlete">選手（入力中心）</option>
+          <option value="coach">コーチ（分析中心）</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- INPUT -->
+  <section class="card" id="tab-input">
+    <h2>レース入力</h2>
+
+    <div class="grid">
+      <div class="col-4">
+        <label>選手名（任意）</label>
+        <input id="athleteName" placeholder="例：小林" />
+      </div>
+      <div class="col-4">
+        <label>開催日</label>
+        <input type="date" id="r_date" />
+      </div>
+      <div class="col-4">
+        <label>レース時間</label>
+        <input type="time" id="r_time" />
+      </div>
+
+      <div class="col-6">
+        <label>開催場所</label>
+        <input id="r_place" placeholder="例：前橋 / 川崎 など" />
+      </div>
+      <div class="col-6">
+        <label>レース種別（任意）</label>
+        <input id="r_class" placeholder="例：S級 / A級 / 記念 / G3 など" />
+      </div>
+
+      <div class="col-4">
+        <label>決まり手</label>
+        <select id="r_kimarite">
+          <option value="">選択</option>
+          <option value="先行">先行</option>
+          <option value="まくり">まくり</option>
+          <option value="さし">さし</option>
+          <option value="マーク">マーク</option>
+        </select>
+      </div>
+
+      <div class="col-4">
+        <label>展開（自由記述）</label>
+        <input id="r_develop" placeholder="例：中団→仕掛け遅れ / 早仕掛け など" />
+      </div>
+
+      <div class="col-2">
+        <label>整いスコア</label>
+        <input type="number" id="r_score" min="0" max="16" placeholder="0-16" />
+      </div>
+      <div class="col-2">
+        <label>着順</label>
+        <input type="number" id="r_rank" min="1" placeholder="例：1" />
+      </div>
+
+      <div class="col-12">
+        <label>勝ちパターンの要点（次に再現する1点）</label>
+        <input id="r_pattern" placeholder="例：2角で外踏まずに溜めて最終バックで一気に踏む" />
+      </div>
+
+      <div class="col-12">
+        <label>反省・改善（1つだけ）</label>
+        <input id="r_fix" placeholder="例：仕掛けの合図が遅い→周辺視で隊列変化を早く拾う" />
+      </div>
+
+      <div class="col-12">
+        <label>メモ（任意）</label>
+        <textarea id="r_note" placeholder="体調・風・ギア・前日練習・感覚など"></textarea>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btnSave">保存</button>
+      <button class="secondary" id="btnClear">入力クリア</button>
+    </div>
+    <div class="hint">※保存後、一覧と分析に反映されます。</div>
+  </section>
+
+  <!-- LIST -->
+  <section class="card" id="tab-list" style="display:none">
+    <div class="row" style="align-items:center; justify-content:space-between">
+      <h2>レース一覧</h2>
+      <div class="actions">
+        <button class="secondary" id="btnRefresh">再表示</button>
+        <button class="danger" id="btnDeleteAll">全削除</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="col-3">
+        <label>絞り込み：決まり手</label>
+        <select id="f_kimarite">
+          <option value="">すべて</option>
+          <option value="先行">先行</option>
+          <option value="まくり">まくり</option>
+          <option value="さし">さし</option>
+          <option value="マーク">マーク</option>
+        </select>
+      </div>
+      <div class="col-3">
+        <label>絞り込み：開催場所</label>
+        <input id="f_place" placeholder="例：前橋" />
+      </div>
+      <div class="col-3">
+        <label>絞り込み：期間（開始）</label>
+        <input type="date" id="f_from" />
+      </div>
+      <div class="col-3">
+        <label>絞り込み：期間（終了）</label>
+        <input type="date" id="f_to" />
+      </div>
+    </div>
+
+    <div class="hint">※フィルタを変えると自動で反映されます。</div>
+
+    <div style="overflow:auto; margin-top:10px">
+      <table>
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>時間</th>
+            <th>場所</th>
+            <th>種別</th>
+            <th>決まり手</th>
+            <th>整い</th>
+            <th>着順</th>
+            <th>勝ちパターン要点</th>
+            <th>改善</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="raceTbody"></tbody>
+      </table>
+    </div>
+    <div class="hint" id="listCount"></div>
+  </section>
+
+  <!-- ANALYSIS -->
+  <section class="card" id="tab-analysis" style="display:none">
+    <h2>分析（勝ちパターン）</h2>
+
+    <div class="kpi">
+      <div class="box">
+        <div class="small">レース数</div>
+        <div class="num" id="kpi_total">0</div>
+      </div>
+      <div class="box">
+        <div class="small">平均 整いスコア</div>
+        <div class="num" id="kpi_avgScore">-</div>
+      </div>
+      <div class="box">
+        <div class="small">1着率</div>
+        <div class="num" id="kpi_winRate">-</div>
+      </div>
+      <div class="box">
+        <div class="small">入着率（3着以内）</div>
+        <div class="num" id="kpi_top3Rate">-</div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:12px">
+      <div class="col-6">
+        <div class="card" style="margin:0">
+          <h2 style="margin-bottom:8px">決まり手別（件数 / 平均整い / 1着率）</h2>
+          <div style="overflow:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>決まり手</th>
+                  <th class="right">件数</th>
+                  <th class="right">平均整い</th>
+                  <th class="right">1着率</th>
+                </tr>
+              </thead>
+              <tbody id="tblKimarite"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-6">
+        <div class="card" style="margin:0">
+          <h2 style="margin-bottom:8px">勝ちパターン候補（整い高い順 上位10）</h2>
+          <div class="hint">「再現する1点」が空のものは除外。コーチはここを見て“型”を抽出。</div>
+          <div style="overflow:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>日付</th>
+                  <th>場所</th>
+                  <th>決まり手</th>
+                  <th class="right">整い</th>
+                  <th>要点</th>
+                </tr>
+              </thead>
+              <tbody id="tblTopPatterns"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div class="card" style="margin:0">
+          <h2 style="margin-bottom:8px">改善テーマ（頻出キーワード簡易集計）</h2>
+          <div class="hint">「改善（1つだけ）」の文章を単純集計します（精密分析は今後強化可能）。</div>
+          <div id="fixKeywords" class="mono small"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DATA -->
+  <section class="card" id="tab-data" style="display:none">
+    <h2>データ（CSV共有）</h2>
+    <div class="hint">選手→CSVエクスポートしてLINE/メールで送る。コーチ→CSVインポートして統合・分析。</div>
+
+    <div class="actions" style="margin-top:10px">
+      <button id="btnExport">CSVエクスポート</button>
+      <button class="secondary" id="btnCopyJson">JSONをコピー（バックアップ）</button>
+    </div>
+
+    <div class="grid" style="margin-top:12px">
+      <div class="col-12">
+        <label>CSVインポート（貼り付け）</label>
+        <textarea id="importArea" placeholder="受け取ったCSVをここに貼り付け → インポート"></textarea>
+      </div>
+      <div class="col-12 actions">
+        <button id="btnImport">CSVインポート（追加）</button>
+        <button class="secondary" id="btnImportReplace">CSVインポート（置換）</button>
+      </div>
+
+      <div class="col-12">
+        <label>JSONバックアップ（貼り付けで復元）</label>
+        <textarea id="jsonArea" placeholder="JSONを貼り付け → 復元（置換）"></textarea>
+      </div>
+      <div class="col-12 actions">
+        <button class="secondary" id="btnRestoreJson">JSON復元（置換）</button>
+      </div>
+    </div>
+
+    <div class="hint">
+      ・「追加」= 既存データに追記（重複IDは自動で回避）<br/>
+      ・「置換」= いまの端末データをまるごと入れ替え
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="card" id="tab-settings" style="display:none">
+    <h2>設定</h2>
+    <div class="grid">
+      <div class="col-6">
+        <label>保存キー（上級）</label>
+        <input id="storageKey" class="mono" />
+        <div class="hint">複数選手で端末を共用する場合はキーを変えると別データとして分離できます。</div>
+      </div>
+      <div class="col-6">
+        <label>状態</label>
+        <div class="badge" id="statusBadge">OK</div>
+        <div class="hint">反映されないときは「強制更新（Ctrl+F5）」またはURL末尾に ?v=数字 を付けて開いてください。</div>
+      </div>
+    </div>
+
+    <div class="actions" style="margin-top:10px">
+      <button class="secondary" id="btnApplyKey">保存キーを適用</button>
+    </div>
+  </section>
+
+<script>
+/** =========================
+ *  Storage / Model
+ * ========================= */
+let STORAGE_KEY = "keirin_pattern_app_v1";
+
+function uid(){
+  // ほぼ重複しないID
+  return "r_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+}
+
+function loadState(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw) return { meta:{mode:"athlete", athleteName:""}, races:[] };
+  try{
+    const parsed = JSON.parse(raw);
+    if(!parsed || typeof parsed !== "object") throw new Error("bad");
+    parsed.meta = parsed.meta || {mode:"athlete", athleteName:""};
+    parsed.races = Array.isArray(parsed.races) ? parsed.races : [];
+    return parsed;
+  }catch{
+    return { meta:{mode:"athlete", athleteName:""}, races:[] };
+  }
+}
+
+function saveState(state){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/** =========================
+ *  Tabs / Mode
+ * ========================= */
+const tabs = Array.from(document.querySelectorAll(".tab"));
+const sections = {
+  input: document.getElementById("tab-input"),
+  list: document.getElementById("tab-list"),
+  analysis: document.getElementById("tab-analysis"),
+  data: document.getElementById("tab-data"),
+  settings: document.getElementById("tab-settings"),
+};
+
+function setTab(name){
+  tabs.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+  Object.keys(sections).forEach(k => sections[k].style.display = (k === name) ? "" : "none");
+  if(name === "list") renderList();
+  if(name === "analysis") renderAnalysis();
+}
+
+tabs.forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
+
+const modeSelect = document.getElementById("modeSelect");
+const modeBadge = document.getElementById("modeBadge");
+
+function applyModeUI(mode){
+  modeBadge.textContent = "モード：" + (mode === "coach" ? "コーチ" : "選手");
+  // コーチは入力より分析を見やすく
+  if(mode === "coach"){
+    // 任意：初期タブを分析へ
+  }
+}
+
+/** =========================
+ *  Input
+ * ========================= */
+const el = (id)=>document.getElementById(id);
+
+function todayStr(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const da = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${da}`;
+}
+
+function clearInput(){
+  el("r_date").value = todayStr();
+  el("r_time").value = "";
+  el("r_place").value = "";
+  el("r_class").value = "";
+  el("r_kimarite").value = "";
+  el("r_develop").value = "";
+  el("r_score").value = "";
+  el("r_rank").value = "";
+  el("r_pattern").value = "";
+  el("r_fix").value = "";
+  el("r_note").value = "";
+}
+
+function getInputRace(){
+  const score = parseInt(el("r_score").value, 10);
+  const rank  = parseInt(el("r_rank").value, 10);
+
+  return {
+    id: uid(),
+    athlete: (el("athleteName").value || "").trim(),
+    date: el("r_date").value || "",
+    time: el("r_time").value || "",
+    place: (el("r_place").value || "").trim(),
+    raceClass: (el("r_class").value || "").trim(),
+    kimarite: el("r_kimarite").value || "",
+    develop: (el("r_develop").value || "").trim(),
+    score: Number.isFinite(score) ? score : null,
+    rank: Number.isFinite(rank) ? rank : null,
+    pattern: (el("r_pattern").value || "").trim(),
+    fix: (el("r_fix").value || "").trim(),
+    note: (el("r_note").value || "").trim(),
+    createdAt: Date.now()
+  };
+}
+
+function validateRace(r){
+  if(!r.date) return "開催日が未入力です";
+  if(!r.place) return "開催場所が未入力です";
+  if(!r.kimarite) return "決まり手が未選択です";
+  if(r.score === null || r.score < 0 || r.score > 16) return "整いスコアは0-16で入力してください";
+  if(r.rank === null || r.rank < 1) return "着順を入力してください";
+  return null;
+}
+
+el("btnSave").addEventListener("click", () => {
+  const state = loadState();
+  const race = getInputRace();
+  const err = validateRace(race);
+  if(err){ alert(err); return; }
+
+  // meta 保存（選手名）
+  state.meta.athleteName = (el("athleteName").value || "").trim();
+
+  state.races.unshift(race); // 新しい順
+  saveState(state);
+
+  renderList();
+  renderAnalysis();
+  alert("保存しました");
+});
+
+el("btnClear").addEventListener("click", () => clearInput());
+
+/** =========================
+ *  List
+ * ========================= */
+const raceTbody = el("raceTbody");
+const listCount = el("listCount");
+
+function parseDateNum(ymd){
+  // "YYYY-MM-DD" -> number yyyymmdd
+  if(!ymd) return null;
+  const p = ymd.split("-");
+  if(p.length !== 3) return null;
+  return parseInt(p.join(""), 10);
+}
+
+function getFilteredRaces(all){
+  const kim = el("f_kimarite").value || "";
+  const place = (el("f_place").value || "").trim();
+  const fromN = parseDateNum(el("f_from").value);
+  const toN = parseDateNum(el("f_to").value);
+
+  return all.filter(r => {
+    if(kim && r.kimarite !== kim) return false;
+    if(place && !(r.place || "").includes(place)) return false;
+    const dn = parseDateNum(r.date);
+    if(fromN && dn && dn < fromN) return false;
+    if(toN && dn && dn > toN) return false;
+    return true;
+  });
+}
+
+function renderList(){
+  const state = loadState();
+  const races = getFilteredRaces(state.races);
+
+  raceTbody.innerHTML = "";
+  for(const r of races){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(r.date || "")}</td>
+      <td>${escapeHtml(r.time || "")}</td>
+      <td>${escapeHtml(r.place || "")}</td>
+      <td>${escapeHtml(r.raceClass || "")}</td>
+      <td>${escapeHtml(r.kimarite || "")}</td>
+      <td class="right">${r.score ?? ""}</td>
+      <td class="right">${r.rank ?? ""}</td>
+      <td>${escapeHtml(r.pattern || "")}</td>
+      <td>${escapeHtml(r.fix || "")}</td>
+      <td>
+        <div class="actions">
+          <button class="secondary" data-act="copy" data-id="${r.id}">複製</button>
+          <button class="danger" data-act="del" data-id="${r.id}">削除</button>
+        </div>
+      </td>
+    `;
+    raceTbody.appendChild(tr);
+  }
+
+  listCount.textContent = `表示：${races.length}件 / 全体：${state.races.length}件`;
+}
+
+function escapeHtml(s){
+  return String(s ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+el("btnRefresh").addEventListener("click", () => renderList());
+el("btnDeleteAll").addEventListener("click", () => {
+  if(!confirm("全データを削除します。よろしいですか？")) return;
+  saveState({ meta: loadState().meta, races: [] });
+  renderList();
+  renderAnalysis();
+});
+
+["f_kimarite","f_place","f_from","f_to"].forEach(id=>{
+  el(id).addEventListener("input", () => renderList());
+  el(id).addEventListener("change", () => renderList());
+});
+
+raceTbody.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button");
+  if(!btn) return;
+  const act = btn.dataset.act;
+  const id = btn.dataset.id;
+  const state = loadState();
+  const idx = state.races.findIndex(r => r.id === id);
+  if(idx < 0) return;
+
+  if(act === "del"){
+    if(!confirm("このレースを削除しますか？")) return;
+    state.races.splice(idx,1);
+    saveState(state);
+    renderList();
+    renderAnalysis();
+    return;
+  }
+
+  if(act === "copy"){
+    const base = state.races[idx];
+    const copy = {...base, id: uid(), createdAt: Date.now()};
+    state.races.unshift(copy);
+    saveState(state);
+    renderList();
+    renderAnalysis();
+    alert("複製しました（最新に追加）");
+  }
+});
+
+/** =========================
+ *  Analysis
+ * ========================= */
+function fmtPct(x){
+  if(!Number.isFinite(x)) return "-";
+  return Math.round(x * 100) + "%";
+}
+
+function avg(nums){
+  const a = nums.filter(n => Number.isFinite(n));
+  if(a.length === 0) return null;
+  return a.reduce((p,c)=>p+c,0)/a.length;
+}
+
+function renderAnalysis(){
+  const state = loadState();
+  const races = state.races.slice();
+
+  el("kpi_total").textContent = races.length;
+
+  const scores = races.map(r=>r.score).filter(v=>Number.isFinite(v));
+  const avgScore = avg(scores);
+  el("kpi_avgScore").textContent = avgScore === null ? "-" : avgScore.toFixed(1);
+
+  const wins = races.filter(r=>r.rank === 1).length;
+  el("kpi_winRate").textContent = races.length ? fmtPct(wins / races.length) : "-";
+
+  const top3 = races.filter(r=>Number.isFinite(r.rank) && r.rank <= 3).length;
+  el("kpi_top3Rate").textContent = races.length ? fmtPct(top3 / races.length) : "-";
+
+  // kimarite table
+  const kinds = ["先行","まくり","さし","マーク"];
+  const tbody = el("tblKimarite");
+  tbody.innerHTML = "";
+  for(const k of kinds){
+    const ks = races.filter(r=>r.kimarite === k);
+    const kAvg = avg(ks.map(r=>r.score));
+    const kWins = ks.filter(r=>r.rank === 1).length;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${k}</td>
+      <td class="right">${ks.length}</td>
+      <td class="right">${kAvg === null ? "-" : kAvg.toFixed(1)}</td>
+      <td class="right">${ks.length ? fmtPct(kWins/ks.length) : "-"}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  // top patterns
+  const tp = el("tblTopPatterns");
+  tp.innerHTML = "";
+  const patternRows = races
+    .filter(r => (r.pattern || "").trim().length > 0 && Number.isFinite(r.score))
+    .sort((a,b)=> (b.score ?? -1) - (a.score ?? -1))
+    .slice(0,10);
+
+  for(const r of patternRows){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(r.date||"")}</td>
+      <td>${escapeHtml(r.place||"")}</td>
+      <td>${escapeHtml(r.kimarite||"")}</td>
+      <td class="right">${r.score ?? ""}</td>
+      <td>${escapeHtml(r.pattern||"")}</td>
+    `;
+    tp.appendChild(tr);
+  }
+  if(patternRows.length === 0){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="5" class="small">まだ「勝ちパターンの要点」が入力されていません。</td>`;
+    tp.appendChild(tr);
+  }
+
+  // fix keywords
+  const kw = {};
+  for(const r of races){
+    const t = (r.fix || "").trim();
+    if(!t) continue;
+    // 超簡易：空白/記号で分割（日本語は形態素ではないが、まず運用用）
+    const parts = t
+      .replace(/[、。・,.;:!！?？（）()「」『』【】\[\]]/g," ")
+      .split(/\s+/)
+      .map(s=>s.trim())
+      .filter(s=>s.length >= 2);
+    for(const p of parts){
+      kw[p] = (kw[p]||0) + 1;
+    }
+  }
+  const topKw = Object.entries(kw).sort((a,b)=>b[1]-a[1]).slice(0,20);
+  el("fixKeywords").textContent = topKw.length
+    ? topKw.map(([k,v])=>`${k}:${v}`).join("  ")
+    : "まだ改善データがありません。";
+}
+
+/** =========================
+ *  Data: CSV import/export
+ * ========================= */
+function toCsvValue(v){
+  const s = String(v ?? "");
+  // RFC4180簡易対応
+  if(/[",\n\r]/.test(s)){
+    return `"${s.replaceAll('"','""')}"`;
+  }
+  return s;
+}
+
+function exportCsv(){
+  const state = loadState();
+  const header = [
+    "id","athlete","date","time","place","raceClass","kimarite","develop",
+    "score","rank","pattern","fix","note","createdAt"
+  ];
+  const lines = [];
+  lines.push(header.join(","));
+  for(const r of state.races){
+    const row = header.map(h => toCsvValue(r[h]));
+    lines.push(row.join(","));
+  }
+  return lines.join("\n");
+}
+
+// CSV parse（簡易：ダブルクオート対応）
+function parseCsv(text){
+  const rows = [];
+  let i=0, cur="", inQ=false;
+  const pushCell = (row)=>{ row.push(cur); cur=""; };
+  const pushRow = (row)=>{ rows.push(row); };
+
+  let row = [];
+  while(i < text.length){
+    const ch = text[i];
+    if(inQ){
+      if(ch === '"'){
+        if(text[i+1] === '"'){ cur += '"'; i+=2; continue; }
+        inQ = false; i++; continue;
+      }else{
+        cur += ch; i++; continue;
+      }
+    }else{
+      if(ch === '"'){ inQ=true; i++; continue; }
+      if(ch === ","){ pushCell(row); i++; continue; }
+      if(ch === "\n"){
+        pushCell(row); pushRow(row); row=[]; i++; continue;
+      }
+      if(ch === "\r"){ i++; continue; }
+      cur += ch; i++; continue;
+    }
+  }
+  // last
+  pushCell(row);
+  if(row.length > 1 || row[0] !== "") pushRow(row);
+  return rows;
+}
+
+function importCsv(text, mode){
+  const rows = parseCsv(text.trim());
+  if(rows.length < 2) throw new Error("CSVが空です");
+  const header = rows[0].map(s=>s.trim());
+  const required = ["id","date","place","kimarite","score","rank"];
+  for(const r of required){
+    if(!header.includes(r)) throw new Error(`CSVヘッダに「${r}」がありません`);
+  }
+
+  const recs = [];
+  for(let i=1;i<rows.length;i++){
+    const obj = {};
+    for(let c=0;c<header.length;c++){
+      obj[header[c]] = rows[i][c] ?? "";
+    }
+    // type
+    obj.score = obj.score === "" ? null : parseInt(obj.score,10);
+    obj.rank  = obj.rank === "" ? null : parseInt(obj.rank,10);
+    obj.createdAt = obj.createdAt === "" ? Date.now() : parseInt(obj.createdAt,10);
+    recs.push(obj);
+  }
+
+  const state = loadState();
+  if(mode === "replace"){
+    // 置換
+    const meta = state.meta || {mode:"coach", athleteName:""};
+    saveState({ meta, races: recs });
+    return recs.length;
+  }else{
+    // 追加（ID重複回避）
+    const existing = new Set(state.races.map(r=>r.id));
+    const add = recs.filter(r => !existing.has(r.id));
+    state.races = add.concat(state.races);
+    saveState(state);
+    return add.length;
+  }
+}
+
+/** =========================
+ *  Buttons
+ * ========================= */
+el("btnExport").addEventListener("click", () => {
+  const csv = exportCsv();
+  // ダウンロード
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const state = loadState();
+  const name = (state.meta.athleteName || "keirin") + "_races.csv";
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+el("btnImport").addEventListener("click", () => {
+  try{
+    const n = importCsv(el("importArea").value, "append");
+    renderList(); renderAnalysis();
+    alert(`インポートしました（追加）：${n}件`);
+  }catch(e){
+    alert("インポート失敗: " + e.message);
+  }
+});
+
+el("btnImportReplace").addEventListener("click", () => {
+  if(!confirm("置換します。今の端末データが上書きされます。よろしいですか？")) return;
+  try{
+    const n = importCsv(el("importArea").value, "replace");
+    renderList(); renderAnalysis();
+    alert(`インポートしました（置換）：${n}件`);
+  }catch(e){
+    alert("インポート失敗: " + e.message);
+  }
+});
+
+el("btnCopyJson").addEventListener("click", async () => {
+  const txt = localStorage.getItem(STORAGE_KEY) || "";
+  try{
+    await navigator.clipboard.writeText(txt);
+    alert("JSONをコピーしました（貼り付けてバックアップ可能）");
+  }catch{
+    el("jsonArea").value = txt;
+    alert("クリップボードにコピーできなかったため、下のJSON欄に表示しました。");
+  }
+});
+
+el("btnRestoreJson").addEventListener("click", () => {
+  if(!confirm("JSONで復元（置換）します。よろしいですか？")) return;
+  try{
+    const raw = el("jsonArea").value.trim();
+    const parsed = JSON.parse(raw);
+    if(!parsed || typeof parsed !== "object") throw new Error("JSONが不正です");
+    if(!Array.isArray(parsed.races)) throw new Error("races がありません");
+    parsed.meta = parsed.meta || {mode:"coach", athleteName:""};
+    saveState(parsed);
+    renderList(); renderAnalysis();
+    alert("復元しました");
+  }catch(e){
+    alert("復元失敗: " + e.message);
+  }
+});
+
+/** =========================
+ *  Settings: Storage key
+ * ========================= */
+const storageKeyInput = el("storageKey");
+const statusBadge = el("statusBadge");
+
+el("btnApplyKey").addEventListener("click", () => {
+  const nk = storageKeyInput.value.trim();
+  if(!nk) return alert("保存キーが空です");
+  STORAGE_KEY = nk;
+  statusBadge.textContent = "適用しました";
+  // 再描画
+  init();
+});
+
+/** =========================
+ *  Init
+ * ========================= */
+function init(){
+  // 設定表示
+  storageKeyInput.value = STORAGE_KEY;
+
+  const state = loadState();
+  // meta
+  modeSelect.value = state.meta?.mode || "athlete";
+  el("athleteName").value = state.meta?.athleteName || "";
+
+  // 入力初期
+  if(!el("r_date").value) el("r_date").value = todayStr();
+
+  applyModeUI(modeSelect.value);
+  renderList();
+  renderAnalysis();
+}
+
+modeSelect.addEventListener("change", () => {
+  const state = loadState();
+  state.meta = state.meta || {};
+  state.meta.mode = modeSelect.value;
+  saveState(state);
+  applyModeUI(modeSelect.value);
+});
+
+clearInput();
+init();
+</script>
+
+</body>
+</html>
